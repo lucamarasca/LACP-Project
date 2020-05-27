@@ -1,0 +1,146 @@
+//created on: 15-mag-2020
+package com.bin
+
+//list any import classes here.
+import java.util.Random;
+import java.util.concurrent.CompletableFuture;
+
+//declare any global variables here
+global Integer randomTime;
+
+//This rule is used for print order received
+rule "CheckOrder"
+    when
+        order: Order(isConsistency() == false)
+        inventory:Inventory()
+    then
+    	//I'll check in my inventory if i have the dishes
+    	if(!inventory.hasDishes(order))
+    	{
+    		order.setConsistency(false);
+    		retract(order);
+    		System.out.println("The order cannot be acquired, because one of the dishes is not available");
+    	}
+    	else
+    	{
+    		order.setConsistency(true);
+    		update(order);
+        	System.out.println("The order has been received!\n" + order.toString());
+        }
+end
+
+rule "PrintOrder"
+	when 
+		order: Order(isConsistency() == true)
+	then
+		System.out.println(order.toString());
+end
+//Used for print a table 
+rule "PrintTable"
+	when
+		table : Table()
+	then
+		System.out.println(table.toString());
+end
+
+//Once an order is completed i delete it from the working memory and i calculate the price
+rule "DeleteOrderAndCalculateCost"
+	when
+		table : Table(isAvailable() == false)
+		order : Order(status == OrderStatus.COMPLETED && getTableID() == table.getTableID())
+		
+	then
+		float total_price = 0;
+		for(int i = 0; i < order.getStarter().size();i++)		
+			total_price += order.getStarter().get(i).getPrice() * order.getStarter().get(i).getQuantity();
+		for(int i = 0; i < order.getDrink().size();i++)		
+			total_price += order.getDrink().get(i).getPrice() * order.getDrink().get(i).getQuantity();
+		for(int i = 0; i < order.getFirstCourse().size();i++)		
+			total_price += order.getFirstCourse().get(i).getPrice() * order.getFirstCourse().get(i).getQuantity();
+		for(int i = 0; i < order.getSecondCourse().size();i++)		
+			total_price += order.getSecondCourse().get(i).getPrice() * order.getSecondCourse().get(i).getQuantity();
+		for(int i = 0; i < order.getDessert().size();i++)		
+			total_price += order.getDessert().get(i).getPrice() * order.getDessert().get(i).getQuantity();
+		
+		System.out.println("The Total Price for this order is: "+total_price + "$");
+		table.setAvailable(true);
+		update(table);
+		retract(order);
+end
+
+
+//This rule is used for assign a table to an order
+rule "AssignTableToOrder"
+	when
+		order: Order(getTableID() == -1 && getStatus() != OrderStatus.COMPLETED)
+		table : Table(isAvailable() == true)
+	then
+		order.setTableID(table.getTableID());
+		table.setAvailable(false);
+		update(table);
+		System.out.println("The table "+table.getTableID()+" has been assigned to the order "+order.getID());
+		update(order);
+end
+
+rule "ChangeStatus"
+	when
+		//If I don't have a table associated to the order, I will not change his status
+		//Once a table will be free, i will process the order
+		order : Order(tableID != -1)
+	then
+		Random random = new Random();
+		int time = 0;
+		//I generate a number between 0 and the value given.
+		time = random.nextInt(randomTime);
+		long start = System.currentTimeMillis();
+		//Wait (This is the time that i should wait since the selected order is done)
+		while(System.currentTimeMillis() - start < time){
+		//I do nothing
+		}
+		//Change status
+		switch(order.getStatus()){
+			case ORDERED:{
+				if(order.getDrink().size() > 1){
+					order.setStatus(OrderStatus.DRINKS);
+					update(order);
+					break;
+				}
+			}
+			case DRINKS:{
+				if(order.getStarter().size() > 1){
+					order.setStatus(OrderStatus.STARTER);
+					update(order);
+					break;
+				}
+			}
+			case STARTER:{
+				if(order.getFirstCourse().size() > 1){
+					order.setStatus(OrderStatus.FIRST_COURSE);
+					update(order);
+					break;
+				}
+			}
+			case FIRST_COURSE:{
+				if(order.getSecondCourse().size() > 1){
+					order.setStatus(OrderStatus.SECOND_COURSE);
+					update(order);
+					break;
+				}
+			}
+			case SECOND_COURSE:{
+				if(order.getDessert().size() > 1){
+					order.setStatus(OrderStatus.DESSERT);
+					update(order);
+					break;
+				}
+			}
+			case DESSERT:{
+				order.setStatus(OrderStatus.COMPLETED);
+				update(order);
+				break;
+			}
+			case COMPLETED:{
+				break;
+			}
+		}
+end
